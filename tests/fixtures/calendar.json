@@ -1,0 +1,45 @@
+{
+  "Data": [
+    {
+      "Number": "SKILL001",
+      "UqId": "SKILL001_101",
+      "EventId": 101,
+      "ReservationId": 1001,
+      "EventName": "Serve and Return",
+      "EventType": " Skill Development ",
+      "Start": "/Date(1781629200000)/",
+      "End": "/Date(1781632800000)/",
+      "MaxMembersOnEvent": 6,
+      "SignedMembers": 4,
+      "WaitListCount": 0,
+      "IsFull": false,
+      "RegistrationOpen": true,
+      "AllowWaitList": false,
+      "InPast": false,
+      "SlotsInfo": "2 of 6 spots remaining",
+      "EventNote": null
+    },
+    {
+      "Number": "FULL001",
+      "UqId": "FULL001_102",
+      "EventId": 102,
+      "ReservationId": 1002,
+      "EventName": "Live Ball",
+      "EventType": "Point Play",
+      "Start": "/Date(1781715600000)/",
+      "End": "/Date(1781719200000)/",
+      "MaxMembersOnEvent": 8,
+      "SignedMembers": 8,
+      "WaitListCount": 2,
+      "IsFull": true,
+      "RegistrationOpen": true,
+      "AllowWaitList": true,
+      "InPast": false,
+      "SlotsInfo": null,
+      "EventNote": "Bring water"
+    }
+  ],
+  "Total": 2,
+  "Errors": null
+}
+
