@@ -1,6 +1,6 @@
 ---
 name: courtreserve-cli
-description: Use this skill when working with the CourtReserve CLI in this repo: documenting usage, showing examples, or running the terminal client against public CourtReserve calendars and events.
+description: "Use this skill when working with the CourtReserve CLI in this repo: documenting usage, showing examples, or running the terminal client against public CourtReserve calendars and events."
 ---
 
 # CourtReserve CLI
