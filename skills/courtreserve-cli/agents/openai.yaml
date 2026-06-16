@@ -1,0 +1,7 @@
+interface:
+  display_name: "CourtReserve CLI"
+  short_description: "Use and document the CourtReserve CLI"
+  default_prompt: "Use $courtreserve-cli to update the CourtReserve CLI docs or show usage examples for public calendar and event lookups."
+
+policy:
+  allow_implicit_invocation: true

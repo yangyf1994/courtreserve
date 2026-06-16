@@ -51,7 +51,7 @@ def main(
 
 def date_range(
     client: CourtReserveClient,
-    org: int,
+    org: int | str,
     start_date_value: str | None,
     end_date_value: str | None,
 ) -> tuple[OrganizationContext, date, date]:
@@ -90,7 +90,7 @@ def parse_clock(value: str | None, option: str) -> time | None:
 
 @app.command("organization")
 def organization_command(
-    org: int = typer.Option(..., "--org", min=1),
+    org: str = typer.Option(..., "--org"),
     as_json: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show public organization metadata."""
@@ -104,7 +104,7 @@ def organization_command(
 
 @app.command("events")
 def events_command(
-    org: int = typer.Option(..., "--org", min=1),
+    org: str = typer.Option(..., "--org"),
     start_date: str | None = typer.Option(None, "--start-date"),
     end_date: str | None = typer.Option(None, "--end-date"),
     name: str | None = typer.Option(None, "--name"),
@@ -136,7 +136,7 @@ def events_command(
 
 @app.command("event-types")
 def event_types_command(
-    org: int = typer.Option(..., "--org", min=1),
+    org: str = typer.Option(..., "--org"),
     start_date: str | None = typer.Option(None, "--start-date"),
     end_date: str | None = typer.Option(None, "--end-date"),
     as_json: bool = typer.Option(False, "--json"),

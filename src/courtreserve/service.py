@@ -57,7 +57,7 @@ def validate_range(start: date, end: date) -> None:
 
 
 def resolve_context_and_events(
-    client: CourtReserveClient, org_id: int, start: date, end: date
+    client: CourtReserveClient, org_id: int | str, start: date, end: date
 ) -> tuple[OrganizationContext, list[EventSummary]]:
     context = client.bootstrap_organization(org_id)
     return context, client.list_events(context, start, end)
