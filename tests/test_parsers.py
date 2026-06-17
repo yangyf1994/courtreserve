@@ -62,7 +62,10 @@ def test_parse_detail_api_html_extracts_structured_fields() -> None:
     <div data-testid="details-container">
       <span data-testid="event-type">Skill Development</span>
       <h4 data-testid="event-name">3.0 - 3.5 Singles Tactics (UTR 3.0-5.0)</h4>
-      <span data-testid="title-part">Full</span>
+      <span class="icon-title-row">
+        <span data-testid="circle-icon"></span>
+        <span data-testid="title-part">Full</span>
+      </span>
       <span data-testid="date">Mon, Jun 15th</span>
       <input id="FirstEventDate" value="6/15/2026 6:30:00 PM" />
       <span data-testid="times">6:30p - 8p</span>
@@ -79,3 +82,36 @@ def test_parse_detail_api_html_extracts_structured_fields() -> None:
     assert details.description == "Bring water."
     assert details.start == datetime.fromisoformat("2026-06-15T18:30:00-07:00")
     assert details.end == datetime.fromisoformat("2026-06-15T20:00:00-07:00")
+
+
+def test_parse_detail_api_html_recurring_full_event_uses_button_and_note() -> None:
+    fallback = parse_detail_page(
+        "<title>Event Details | powered by CourtReserve</title>",
+        13124,
+        "QPKCJUC13124109",
+        "https://app.courtreserve.com/Online/Events/Details/13124/QPKCJUC13124109",
+    )
+    fragment = """
+    <div data-testid="details-container">
+      <span data-testid="event-type">Leagues</span>
+      <h4 data-testid="event-name">Beginner League (Tuesday/Thursday)</h4>
+      <span data-testid="no-drop-in-date">Jun 2nd - Jun 25th (8 dates)</span>
+      <span data-testid="no-drop-in-dates">6/2, 6/4, 6/9, 6/11, 6/16, 6/18, 6/23, 6/25</span>
+      <span data-testid="occurence-time">6:00 PM - 8:00 PM</span>
+      <input id="FirstEventDate" value="6/2/2026 6:00:00 PM" />
+      <a data-testid="register-full-event-btn">Register for Full Event</a>
+      <p data-testid="note">You will be charged the $105 at the start of the event.</p>
+      <iframe id="eventDescriptionData" srcdoc="<div><p>League Season Is Here!</p></div>"></iframe>
+    </div>
+    """
+
+    details = parse_detail_api_html(fragment, fallback, "America/New_York")
+
+    assert details.enhanced is True
+    assert details.name == "Beginner League (Tuesday/Thursday)"
+    assert details.event_type == "Leagues"
+    assert details.availability == "Register for Full Event"
+    assert details.note == "You will be charged the $105 at the start of the event."
+    assert details.description == "League Season Is Here!"
+    assert details.start is None
+    assert details.end is None

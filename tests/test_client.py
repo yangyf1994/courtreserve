@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from courtreserve.client import CourtReserveClient
-from courtreserve.errors import UpstreamError
+from courtreserve.errors import NotFoundError, UpstreamError
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -80,3 +80,39 @@ def test_client_bootstrap_does_not_fall_back_when_official_search_fails() -> Non
             client.bootstrap_organization("Sisters Pickleball Club")
 
     assert official_attempts == 3
+
+
+def test_get_event_details_raises_not_found_when_detail_api_404s() -> None:
+    page = """
+    <html>
+      <head><title>Event Details | powered by CourtReserve</title></head>
+      <body>
+        <script>
+          url: fixUrl('https://events.courtreserve.com/Online/EventsApi/ApiDetails?id=3683&amp;number=NOPE')
+        </script>
+      </body>
+    </html>
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/Online/Calendar/Events/3683/Month":
+            return httpx.Response(200, text=(FIXTURES / "organization.html").read_text())
+        if request.url.path == "/Online/Events/Details/3683/NOPE":
+            return httpx.Response(200, text=page)
+        if request.url.path == "/Online/EventsApi/ApiDetails":
+            return httpx.Response(
+                200,
+                text="""
+                <section class="our-error bgc-fa">
+                  <div class="error_page newsletter_widget">
+                    <h4>Sorry, but the Event you are looking for has not been found</h4>
+                  </div>
+                </section>
+                """,
+            )
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    with CourtReserveClient(transport=httpx.MockTransport(handler)) as client:
+        context = client.bootstrap_organization(3683)
+        with pytest.raises(NotFoundError):
+            client.get_event_details(context, "NOPE")

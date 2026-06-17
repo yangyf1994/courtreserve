@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 
-from .errors import UpstreamError
+from .errors import NotFoundError, UpstreamError
 from .models import EventDetails, EventSummary, OrganizationContext
 
 _ASPNET_DATE = re.compile(r"^/Date\((-?\d+)(?:[+-]\d{4})?\)/$")
@@ -134,10 +134,13 @@ def parse_detail_page(page: str, org_id: int, number: str, page_url: str) -> Eve
 
 def parse_detail_api_html(fragment: str, fallback: EventDetails, timezone: str) -> EventDetails:
     soup = BeautifulSoup(fragment, "html.parser")
+    if is_not_found_detail_html(soup):
+        raise NotFoundError(f"CourtReserve event not found: {fallback.org_id}/{fallback.number}")
     name_node = soup.select_one("[data-testid='event-name']")
     type_node = soup.select_one("[data-testid='event-type']")
-    availability_node = soup.select_one("[data-testid='title-part']")
+    availability = parse_detail_html_availability(soup)
     description_frame = soup.select_one("iframe#eventDescriptionData")
+    note_node = soup.select_one("[data-testid='note']")
     description: str | None = None
     if description_frame and description_frame.has_attr("srcdoc"):
         description_doc = BeautifulSoup(description_frame["srcdoc"], "html.parser")
@@ -155,15 +158,18 @@ def parse_detail_api_html(fragment: str, fallback: EventDetails, timezone: str) 
             "start": start or fallback.start,
             "end": end or fallback.end,
             "description": description or fallback.description,
-            "availability": optional_text(
-                availability_node.get_text(" ", strip=True) if availability_node else None
-            ),
+            "note": optional_text(note_node.get_text(" ", strip=True) if note_node else None),
+            "availability": availability,
             "enhanced": True,
         }
     )
 
 
 def parse_detail_html_start(soup: BeautifulSoup, timezone: str) -> datetime | None:
+    if soup.select_one("[data-testid='no-drop-in-date']") or soup.select_one(
+        "[data-testid='no-drop-in-dates']"
+    ):
+        return None
     date_node = soup.select_one("[data-testid='date']")
     time_node = soup.select_one("[data-testid='times']")
     if date_node and time_node:
@@ -194,7 +200,11 @@ def parse_detail_html_start(soup: BeautifulSoup, timezone: str) -> datetime | No
                 parsed = datetime.strptime(value, "%m/%d/%Y %I:%M:%S %p")
                 return parsed.replace(tzinfo=ZoneInfo(timezone))
             except ValueError:
-                pass
+                try:
+                    parsed = datetime.strptime(value, "%Y-%m-%d %I:%M:%S %p")
+                    return parsed.replace(tzinfo=ZoneInfo(timezone))
+                except ValueError:
+                    pass
     return None
 
 
@@ -227,6 +237,36 @@ def parse_detail_html_end(
         microsecond=0,
         tzinfo=ZoneInfo(timezone),
     )
+
+
+def parse_detail_html_availability(soup: BeautifulSoup) -> str | None:
+    circle_icon = soup.select_one("[data-testid='circle-icon']")
+    if circle_icon is not None:
+        row = circle_icon.find_parent(class_="icon-title-row")
+        if row is not None:
+            availability_row = row.select_one("[data-testid='title-part']")
+            if availability_row:
+                return optional_text(availability_row.get_text(" ", strip=True))
+
+    action_button = soup.select_one(
+        "[data-testid='register-full-event-btn'], "
+        "[data-testid='join-waitlisted-btn'], "
+        "[data-testid='register-btn']"
+    )
+    if action_button:
+        return optional_text(action_button.get_text(" ", strip=True))
+
+    return None
+
+
+def is_not_found_detail_html(soup: BeautifulSoup) -> bool:
+    error_page = soup.select_one(".error_page")
+    if error_page is None:
+        return False
+    message = error_page.get_text(" ", strip=True).casefold()
+    return "not been found" in message
+
+
 def optional_text(value: Any) -> str | None:
     if value is None:
         return None

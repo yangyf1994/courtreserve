@@ -283,6 +283,10 @@ class CourtReserveClient:
         try:
             api_response = self._request("GET", api_url)
             return parse_detail_api_html(api_response.text, fallback, context.timezone), False
+        except NotFoundError:
+            if fallback.name == "Event Details" and fallback.description is None:
+                raise
+            return fallback, True
         except UpstreamError:
             return fallback, True
 
