@@ -19,6 +19,16 @@ _TIMEZONE = re.compile(r"(?:TimeZone:\s*['\"]|\"timezone\":\")([^'\"]+)")
 _API_DETAILS = re.compile(r"url:\s*fixUrl\('([^']*EventsApi/ApiDetails[^']*)'\)")
 
 
+def _clean_event_title(value: str) -> str:
+    return re.sub(r"\s*\|\s*powered by CourtReserve\s*$", "", value).strip()
+
+
+def _normalize_clock_text(value: str) -> str:
+    compact = re.sub(r"\s+", "", value).upper()
+    compact = re.sub(r"(?<=\d)(A|P)$", r"\1M", compact)
+    return compact
+
+
 def parse_aspnet_date(value: str, timezone: str) -> datetime:
     match = _ASPNET_DATE.match(value)
     if not match:
@@ -110,7 +120,7 @@ def parse_detail_page(page: str, org_id: int, number: str, page_url: str) -> Eve
     soup = BeautifulSoup(page, "html.parser")
     title = soup.find("h1") or soup.find("h2") or soup.find("title")
     name = title.get_text(" ", strip=True) if title else f"Event {number}"
-    name = re.sub(r"\s*\|\s*powered by CourtReserve\s*$", "", name)
+    name = _clean_event_title(name)
     description_node = soup.select_one(".event-description, [data-testid='event-description']")
     return EventDetails(
         org_id=org_id,
@@ -122,50 +132,101 @@ def parse_detail_page(page: str, org_id: int, number: str, page_url: str) -> Eve
     )
 
 
-def parse_detail_api(
-    payload: Any, fallback: EventDetails, timezone: str
-) -> EventDetails:
-    data = payload.get("data", payload) if isinstance(payload, dict) else payload
-    if not isinstance(data, dict):
-        raise UpstreamError("CourtReserve event details response was not an object")
+def parse_detail_api_html(fragment: str, fallback: EventDetails, timezone: str) -> EventDetails:
+    soup = BeautifulSoup(fragment, "html.parser")
+    name_node = soup.select_one("[data-testid='event-name']")
+    type_node = soup.select_one("[data-testid='event-type']")
+    availability_node = soup.select_one("[data-testid='title-part']")
+    description_frame = soup.select_one("iframe#eventDescriptionData")
+    description: str | None = None
+    if description_frame and description_frame.has_attr("srcdoc"):
+        description_doc = BeautifulSoup(description_frame["srcdoc"], "html.parser")
+        description = description_doc.get_text(" ", strip=True) or None
 
-    def first(*keys: str) -> Any:
-        for key in keys:
-            if data.get(key) is not None:
-                return data[key]
-        return None
+    start = parse_detail_html_start(soup, timezone)
+    end = parse_detail_html_end(soup, start, timezone)
 
-    start_raw = first("Start", "EventStart", "start")
-    end_raw = first("End", "EventEnd", "end")
-    start = parse_flexible_datetime(start_raw, timezone)
-    end = parse_flexible_datetime(end_raw, timezone)
     return fallback.model_copy(
         update={
-            "name": str(first("EventName", "Title", "name") or fallback.name).strip(),
-            "event_type": optional_text(first("EventType", "eventType")),
-            "start": start,
-            "end": end,
-            "description": optional_text(first("Description", "description"))
-            or fallback.description,
-            "note": optional_text(first("EventNote", "note")),
-            "availability": optional_text(first("SlotsInfo", "availability")),
+            "name": _clean_event_title(
+                name_node.get_text(" ", strip=True) if name_node else fallback.name
+            ),
+            "event_type": optional_text(type_node.get_text(" ", strip=True) if type_node else None),
+            "start": start or fallback.start,
+            "end": end or fallback.end,
+            "description": description or fallback.description,
+            "availability": optional_text(
+                availability_node.get_text(" ", strip=True) if availability_node else None
+            ),
             "enhanced": True,
         }
     )
 
 
-def parse_flexible_datetime(value: Any, timezone: str) -> datetime | None:
-    if not value:
+def parse_detail_html_start(soup: BeautifulSoup, timezone: str) -> datetime | None:
+    date_node = soup.select_one("[data-testid='date']")
+    time_node = soup.select_one("[data-testid='times']")
+    if date_node and time_node:
+        date_text = date_node.get_text(" ", strip=True)
+        range_text = time_node.get_text(" ", strip=True)
+        if date_text and range_text:
+            start_text = range_text.split("-", 1)[0].strip()
+            start_text = _normalize_clock_text(start_text)
+            cleaned_date = re.sub(r"(\d+)(st|nd|rd|th)", r"\1", date_text)
+            for fmt in (
+                "%a, %b %d %Y %I:%M%p",
+                "%A, %b %d %Y %I:%M%p",
+                "%a, %b %d %Y %I%p",
+                "%A, %b %d %Y %I%p",
+            ):
+                try:
+                    parsed = datetime.strptime(
+                        f"{cleaned_date} {datetime.now().year} {start_text}", fmt
+                    )
+                    return parsed.replace(tzinfo=ZoneInfo(timezone))
+                except ValueError:
+                    continue
+    first_event_date = soup.select_one("input#FirstEventDate")
+    if first_event_date and first_event_date.has_attr("value"):
+        value = str(first_event_date["value"]).strip()
+        if value:
+            try:
+                parsed = datetime.strptime(value, "%m/%d/%Y %I:%M:%S %p")
+                return parsed.replace(tzinfo=ZoneInfo(timezone))
+            except ValueError:
+                pass
+    return None
+
+
+def parse_detail_html_end(
+    soup: BeautifulSoup, start: datetime | None, timezone: str
+) -> datetime | None:
+    if start is None:
         return None
-    text = str(value)
-    if _ASPNET_DATE.match(text):
-        return parse_aspnet_date(text, timezone)
-    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=ZoneInfo(timezone))
-    return parsed.astimezone(ZoneInfo(timezone))
-
-
+    time_node = soup.select_one("[data-testid='times']")
+    if not time_node:
+        return None
+    range_text = time_node.get_text(" ", strip=True)
+    parts = [value.strip() for value in range_text.split("-", 1)]
+    if len(parts) != 2 or not parts[1]:
+        return None
+    end_text = _normalize_clock_text(parts[1])
+    end_clock = None
+    for fmt in ("%I:%M%p", "%I%p"):
+        try:
+            end_clock = datetime.strptime(end_text, fmt).time()
+            break
+        except ValueError:
+            continue
+    if end_clock is None:
+        return None
+    return start.replace(
+        hour=end_clock.hour,
+        minute=end_clock.minute,
+        second=0,
+        microsecond=0,
+        tzinfo=ZoneInfo(timezone),
+    )
 def optional_text(value: Any) -> str | None:
     if value is None:
         return None

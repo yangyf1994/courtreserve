@@ -1,9 +1,20 @@
 from __future__ import annotations
 
+import re
 from datetime import date, time
 
 from .client import CourtReserveClient
 from .models import EventStatus, EventSummary, OrganizationContext
+
+
+def normalize_event_type_key(value: str) -> str:
+    collapsed = re.sub(r"\s+", " ", value.strip()).casefold()
+    return re.sub(r"^[^\w]+|[^\w]+$", "", collapsed)
+
+
+def normalize_event_type_label(value: str) -> str:
+    collapsed = re.sub(r"\s+", " ", value.strip())
+    return re.sub(r"^[^\w]+|[^\w]+$", "", collapsed)
 
 
 def filter_events(
@@ -15,13 +26,17 @@ def filter_events(
     start_after: time | None = None,
     start_before: time | None = None,
 ) -> list[EventSummary]:
-    type_keys = {value.strip().casefold() for value in event_types or [] if value.strip()}
+    type_keys = {
+        normalize_event_type_key(value)
+        for value in event_types or []
+        if normalize_event_type_key(value)
+    }
     name_key = name.casefold() if name else None
     result: list[EventSummary] = []
     for event in events:
         if name_key and name_key not in event.name.casefold():
             continue
-        if type_keys and event.event_type.strip().casefold() not in type_keys:
+        if type_keys and normalize_event_type_key(event.event_type) not in type_keys:
             continue
         if status == EventStatus.OPEN and (
             event.in_past or event.is_full or not event.registration_open
@@ -43,9 +58,9 @@ def filter_events(
 def event_types(events: list[EventSummary]) -> list[str]:
     unique: dict[str, str] = {}
     for event in events:
-        value = event.event_type.strip()
+        value = normalize_event_type_label(event.event_type)
         if value:
-            unique.setdefault(value.casefold(), value)
+            unique.setdefault(normalize_event_type_key(value), value)
     return sorted(unique.values(), key=str.casefold)
 
 
@@ -61,4 +76,3 @@ def resolve_context_and_events(
 ) -> tuple[OrganizationContext, list[EventSummary]]:
     context = client.bootstrap_organization(org_id)
     return context, client.list_events(context, start, end)
-

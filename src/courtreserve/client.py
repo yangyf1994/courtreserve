@@ -16,7 +16,7 @@ from .parsers import (
     extract_details_api_url,
     loads_json,
     parse_calendar_response,
-    parse_detail_api,
+    parse_detail_api_html,
     parse_detail_page,
     parse_organization_page,
 )
@@ -282,8 +282,7 @@ class CourtReserveClient:
             return fallback, True
         try:
             api_response = self._request("GET", api_url)
-            payload: Any = loads_json(api_response.text)
-            return parse_detail_api(payload, fallback, context.timezone), False
+            return parse_detail_api_html(api_response.text, fallback, context.timezone), False
         except UpstreamError:
             return fallback, True
 

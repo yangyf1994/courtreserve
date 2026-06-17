@@ -6,6 +6,8 @@ from courtreserve.models import OrganizationContext
 from courtreserve.parsers import (
     parse_aspnet_date,
     parse_calendar_response,
+    parse_detail_api_html,
+    parse_detail_page,
     parse_organization_page,
 )
 
@@ -47,3 +49,33 @@ def test_parse_calendar_response_normalizes_events() -> None:
     assert events[0].event_type == "Skill Development"
     assert events[0].spots_remaining == 2
     assert events[1].availability == "Waitlist"
+
+
+def test_parse_detail_api_html_extracts_structured_fields() -> None:
+    fallback = parse_detail_page(
+        "<title>Event Details | powered by CourtReserve</title>",
+        3683,
+        "GTMYM5A368331",
+        "https://app.courtreserve.com/Online/Events/Details/3683/GTMYM5A368331",
+    )
+    fragment = """
+    <div data-testid="details-container">
+      <span data-testid="event-type">Skill Development</span>
+      <h4 data-testid="event-name">3.0 - 3.5 Singles Tactics (UTR 3.0-5.0)</h4>
+      <span data-testid="title-part">Full</span>
+      <span data-testid="date">Mon, Jun 15th</span>
+      <input id="FirstEventDate" value="6/15/2026 6:30:00 PM" />
+      <span data-testid="times">6:30p - 8p</span>
+      <iframe id="eventDescriptionData" srcdoc="<div><p>Bring water.</p></div>"></iframe>
+    </div>
+    """
+
+    details = parse_detail_api_html(fragment, fallback, "America/Los_Angeles")
+
+    assert details.enhanced is True
+    assert details.name == "3.0 - 3.5 Singles Tactics (UTR 3.0-5.0)"
+    assert details.event_type == "Skill Development"
+    assert details.availability == "Full"
+    assert details.description == "Bring water."
+    assert details.start == datetime.fromisoformat("2026-06-15T18:30:00-07:00")
+    assert details.end == datetime.fromisoformat("2026-06-15T20:00:00-07:00")

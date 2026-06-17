@@ -46,6 +46,23 @@ def test_event_types_trim_and_deduplicate(events) -> None:
     assert event_types(events) == ["Point Play", "Skill Development"]
 
 
+def test_filter_type_ignores_trailing_punctuation(events) -> None:
+    noisy = [
+        events[0],
+        events[1].model_copy(update={"event_type": "Skill Development."}),
+    ]
+    result = filter_events(noisy, event_types=["Skill Development"])
+    assert [event.number for event in result] == ["SKILL001", "FULL001"]
+
+
+def test_event_types_strip_trailing_punctuation(events) -> None:
+    noisy = [
+        events[0],
+        events[1].model_copy(update={"event_type": "Skill Development."}),
+    ]
+    assert event_types(noisy) == ["Skill Development"]
+
+
 def test_validate_range() -> None:
     validate_range(date(2026, 1, 1), date(2026, 3, 31))
     with pytest.raises(ValueError):
